@@ -1,0 +1,51 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# ORB-SLAM3 settings for UCU SLAM Dataset v1 — Intel RealSense D435 color camera
+# Source: ucu-slam-dataset/calibration.yaml (cameras.color, Kalibr, pinhole + radtan)
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+# Intrinsics [fx, fy, cx, cy]
+Camera1.fx: 601.1733383650345
+Camera1.fy: 600.2663647399592
+Camera1.cx: 314.0164516341506
+Camera1.cy: 250.039444021504
+
+# Distortion [k1, k2, p1, p2]
+Camera1.k1: 0.139268662386042
+Camera1.k2: -0.30741279731381366
+Camera1.p1: 0.0007272799549728076
+Camera1.p2: 0.0006655761403425819
+
+Camera.width: 640
+Camera.height: 480
+Camera.fps: 30
+
+# 0: BGR, 1: RGB (same convention as the TUM examples)
+Camera.RGB: 1
+
+#--------------------------------------------------------------------------------------------
+# ORB parameters (more features than TUM: outdoor scenes, larger depth range)
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 1500
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer parameters (ignored when the viewer is off)
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0

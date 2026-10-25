@@ -1,0 +1,33 @@
+--------------------------------------------------------------------------------
+Loaded 2335 stamps and poses from: /root/project/Datasets/TUM/rgbd_dataset_freiburg1_desk/groundtruth.txt
+Loaded 142 stamps and poses from: /root/project/results/traj_orbslam3_fr1_desk.txt
+--------------------------------------------------------------------------------
+Synchronizing trajectories...
+Found 142 of max. 142 possible matching timestamps between...
+	/root/project/Datasets/TUM/rgbd_dataset_freiburg1_desk/groundtruth.txt
+and:	/root/project/results/traj_orbslam3_fr1_desk.txt
+..with max. time diff.: 0.01 (s) and time offset: 0.0 (s).
+--------------------------------------------------------------------------------
+Aligning using Umeyama's method... (with scale correction)
+Rotation of alignment:
+[[ 0.65872728  0.45175493 -0.60166092]
+ [ 0.74894313 -0.47008137  0.46702002]
+ [-0.071851   -0.75824863 -0.64799417]]
+Translation of alignment:
+[1.21371326 0.86560673 1.46037343]
+Scale correction: 0.9779959158870797
+--------------------------------------------------------------------------------
+Compared 142 absolute pose pairs.
+Calculating APE for translation part pose relation...
+--------------------------------------------------------------------------------
+APE w.r.t. translation part (m)
+(with Sim(3) Umeyama alignment)
+
+       max	0.097262
+      mean	0.015364
+    median	0.011723
+       min	0.001123
+      rmse	0.020409
+       sse	0.059148
+       std	0.013434
+

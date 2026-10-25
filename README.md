@@ -1,171 +1,203 @@
-# 🍷 wine-origin-classifier
+# UCU SLAM Toolkit
 
-Predicts which of 3 grape cultivars a wine came from, using 13 chemical measurements — a small, complete, fully-reproducible example project built from [`ucu-ai-course/project-template`](https://github.com/ucu-ai-course/project-template).
-
-![lint](https://github.com/ucu-ai-course/project-template/actions/workflows/lint.yml/badge.svg)
-![license](https://img.shields.io/badge/license-MIT-blue.svg)
-
-> [!note]
-> This repo is **both** a GitHub Template (click "Use this template" to get a clean, working starting point for your own semester project) **and** a fully filled-in example (this exact repo trains a real model and produces real numbers — nothing here is a placeholder). See §"Repository structure" for what to replace with your own project's content.
+We run ORB-SLAM3 (Monocular) on the UCU SLAM Dataset. We compare the result with GNSS and make a video. Built from [`ucu-ai-course/project-template`](https://github.com/ucu-ai-course/project-template).
 
 ## Demo
 
-`streamlit run app/streamlit_app.py` (see [`app/README.md`](app/README.md)) launches the demo below: enter 13 chemical measurements (or click "fill with a random test-set sample"), get a predicted cultivar and class probabilities.
+The video shows the camera frame on the left. On the right there is a map from the top. The gray line is GNSS. Each color line is one ORB-SLAM3 run.
 
-![Demo of the Streamlit app: entering wine chemistry and getting a predicted cultivar with class probabilities](results/demo/demo-wine.gif)
+```bash
+./run_sequence.sh 1    # the video is saved to results/seq1/seq1_all_runs.mp4
+```
 
 ## Team
 
 | Name | GitHub | Role |
 |---|---|---|
-| Oleksandr Kosovan | [@OleksandrKosovan](https://github.com/OleksandrKosovan) | Data pipeline, modeling, evaluation |
-| Slavko Prytula | [@SlavkoPrytula](https://github.com/SlavkoPrytula) | CLI, Streamlit app, CI/CD |
+| Maxym Hobela | TODO | ORB-SLAM3 build and runs |
+| TODO Hapiuk | TODO | DSO vs ORB-SLAM3 benchmark on TUM, .mcap tools |
 
 ## Problem and motivation
 
-Wine composition is routinely measured in a lab (alcohol content, phenols, color intensity, and so on), but the cultivar a bottle actually comes from isn't always recorded reliably further down the supply chain. This project asks a narrow, checkable question: given only the chemistry, can a simple model recover the cultivar? It's a deliberately small, well-understood problem — the point of this repository is to demonstrate a complete, reproducible ML project structure end to end, not to push the state of the art on wine chemistry.
+A robot must know where it is. GNSS does not always work well. A camera is cheap. We want to check how well ORB-SLAM3 works with one camera on a real robot. We test it in the UCU campus and in Stryiskyi park. We test it in the day and in the evening.
 
 ## Data
 
-178 samples, 13 numeric chemical features, 3 balanced-ish classes, sourced from the UCI Wine Recognition dataset via `sklearn.datasets.load_wine`. No missing values, no personal data, no licensing restrictions beyond standard academic citation. Full data card, schema, and checksum: [`data/README.md`](data/README.md).
+UCU SLAM Dataset v1 on Hugging Face: [`ucu-autonomous-ugv/ucu-slam-dataset-v1`](https://huggingface.co/datasets/ucu-autonomous-ugv/ucu-slam-dataset-v1). It has 13 sequences. Each sequence is a ROS 2 `.mcap` file. The camera is Intel RealSense D435 (640x480, 30 fps).
 
-> [!note] Why this matters: data isn't part of this git repo
-> `data/`, like `models/`, is gitignored. Committing raw data bloats the repo forever (`git rm` doesn't remove history — see `data/README.md`), makes diffs unreadable, and often runs into licenses that don't actually permit redistribution. Instead, `data/raw/CHECKSUMS.txt` **is** committed — a few bytes that let anyone verify they regenerated the exact same data, without the data itself ever touching git.
+Access is closed. Accept the terms on the dataset page. Make a **Read** token in Settings. Data is not in this repo.
+
+| N | Route | Light |
+|---|---|---|
+| 1 | Church loop, campus | day |
+| 2 / 3 | Middle loop, campus (3 is reverse) | day |
+| 4 / 5 | Figure eight, campus | 4 day, **5 evening** |
+| 6 / 7 | Middle loop, park (7 is reverse) | day |
+| 8 | Park loop | **evening** |
+| 9 | Loop with height change, park | day |
+| 10 | Figure eight, park | day |
+| 11 / 12 | Line campus to park and back | day |
+| 13 | Line campus to park | **evening** |
+
+Day and evening pairs on the same route: 4 and 5, 6 and 8, 11 and 13.
 
 ## Approach
 
 ```mermaid
 flowchart LR
-    A["load_wine()"] --> B["data/raw/wine.csv\ndownload_data.py"]
-    B --> C["stratified 80/20 split\nseed=42"]
-    C --> D["StandardScaler +\nLogisticRegression\ncli.py train"]
-    C --> E["baseline / random forest / SVM\nrun_experiment.py"]
-    D --> F["results/metrics.json\n+ confusion matrix"]
-    E --> F
-    F --> G["Streamlit demo"]
+    A["Hugging Face\nsequence-N.mcap"] --> B["extract_ucu_mcap.py\nTUM format"]
+    B --> C["ORB-SLAM3 mono_tum\nN runs"]
+    C --> D["KF_run*.txt"]
+    D --> E["make_slam_video.py\nSim(3) align + RMSE xy"]
+    E --> F["video + rmse_summary.txt"]
 ```
 
-Baseline (`DummyClassifier`) → primary model (`StandardScaler` + `LogisticRegression`) → comparison model (`RandomForestClassifier`) → a fourth model we tried and rejected (`SVC`, default hyperparameters). See [`results/experiments.md`](results/experiments.md) for the full comparison, including the rejected run.
+1. Download one sequence.
+2. Convert `.mcap` to TUM format (`rgb/`, `rgb.txt`, `imu.txt`, `groundtruth.txt`). No ROS needed.
+3. Run ORB-SLAM3 Monocular 5 times.
+4. Align each run to GNSS with Sim(3) (Umeyama). Count ATE RMSE in the xy plane.
+5. Make one video with all runs.
+
+We use Monocular because depth in v1 is broken.
 
 ## Results
 
-Test set (36 held-out samples) and 5-fold cross-validation, seed=42. Generated by `python scripts/run_experiment.py` on 2026-08-09; reproduce with `make reproduce` (prints the primary model's numbers) or `python scripts/run_experiment.py` (full table below).
+Sequence 1 (day), best run:
 
-| Model | Test accuracy | Test macro-F1 | CV accuracy (mean ± std) |
-|---|---|---|---|
-| Baseline (most-frequent class) | 0.389 | 0.187 | 0.399 ± 0.015 |
-| **Logistic regression (selected)** | 0.972 | 0.971 | **0.983 ± 0.014** |
-| Random forest (200 trees) | 1.000 | 1.000 | 0.978 ± 0.021 |
-| SVM, default hyperparameters — *rejected* | 0.694 | 0.558 | 0.674 ± 0.040 |
+| Metric | Value |
+|---|---|
+| ATE RMSE 3D | 1.57 m |
+| ATE RMSE xy | 1.11 m |
+| Loop closed | no (drift about 4 m) |
 
-![Confusion matrix of the selected logistic regression model on the test set](results/figures/confusion_matrix.png)
+Runs on the same data can be very different (seq 1: 1.1 m and 12.7 m). This is scale drift. So we make many runs and use the median.
 
-> [!note] Why this matters: a metric without a baseline row means nothing
-> "97% accuracy" sounds great until you notice the majority class alone is ~40% of the test set — at which point 97% is either impressive or barely-better-than-guessing, and you can't tell which without the baseline row above. Report it every time, not just when it's flattering.
+Sanity check on TUM fr1_xyz (RGB-D): RMSE about 0.01 m. The build is OK.
 
-> [!note] Why this matters: one seed isn't a conclusion
-> Look at the table above: random forest scores *higher* on the single test split (1.000 vs 0.972) than logistic regression — but logistic regression wins on 5-fold CV, both on the mean **and** with a lower std. With only 36 test samples, one flipped prediction moves accuracy by ~2.8 points — enough to flip a ranking that a single split would have gotten wrong. That's why we selected the model on CV numbers, not the test-set numbers. Full writeup: [`results/experiments.md`](results/experiments.md).
+### DSO vs ORB-SLAM3 on TUM fr1_desk
+
+Both run as Monocular. ATE with Sim(3) alignment (`evo_ape -va --align -s`). Files are in [`results/tum_fr1_desk/`](results/tum_fr1_desk/).
+
+| Method | Poses | ATE RMSE | ATE max | Scale correction |
+|---|---|---|---|---|
+| **ORB-SLAM3** (keyframes) | 142 | **0.020 m** | 0.097 m | 0.978 |
+| DSO | 217 | 0.635 m | 1.234 m | 0.629 |
+
+ORB-SLAM3 is about 30 times more accurate here. DSO also has a big scale error.
 
 ## Quick start
 
-```bash
-git clone <repo-url> && cd wine-origin-classifier
-make setup                          # creates .venv, installs deps, installs pre-commit hooks
-make reproduce                      # data -> train -> evaluate; should print accuracy=0.9722 macro_f1=0.9710
-source .venv/bin/activate           # everything past this point assumes the venv is active
-streamlit run app/streamlit_app.py  # opens the demo at localhost:8501
-```
-
-> [!important]
-> `make setup` uses `python3.13` by default (`PYTHON=python3.13` in the `Makefile`) — if that's not on your `PATH`, either install it or run `make setup PYTHON=python3.11` (3.11+ works fine, this project has no 3.13-only dependency).
->
-> `setup` and `reproduce` are the only two `Makefile` targets — deliberately, as a small example of the pattern rather than a wrapper around everything. Every other command in this README (training, the demo, linting, tests) is run directly; see "Development" below.
-
-### Tooling is this template's default, not a course requirement
-
-This repo uses `pip` + `flake8` + `black` + `isort` because that's the lowest common denominator most students already know. Nothing about the course methodology requires exactly this — a `uv` + `ruff` setup (faster, less config) is a perfectly fine substitute, and what's graded is that your environment is reproducible and your code is consistently formatted, not which tool you used to get there. If you switch, it's about this much code:
+All commands run in Ubuntu (WSL on Windows or Linux).
 
 ```bash
-uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
-ruff check . && ruff format --check .
+sed -i 's/\r$//' *.sh scripts/*.sh   # only if the files came through Windows
+chmod +x *.sh scripts/*.sh
+./setup.sh                           # Python venv, evo, Hugging Face client
+hf auth login --token hf_YOUR_TOKEN
+./run_sequence.sh 1                  # sequence 1, 5 runs (about 1 hour)
+./run_sequence.sh 5 3                # sequence 5, 3 runs
+STEP=6 FIT=all ./run_sequence.sh 8   # video settings
 ```
+
+You need ORB-SLAM3 in `~/ORB_SLAM3`. Build steps for Ubuntu 24.04 are in [`docs/ucu_slam_toolkit_uk.md`](docs/ucu_slam_toolkit_uk.md) (section 3.1). Check the build:
+
+```bash
+./scripts/sanity_check.sh            # fr1_xyz, expect PASS
+```
+
+Only video from ready runs (no ORB-SLAM3):
+
+```bash
+~/venvs/ucu/bin/python scripts/make_slam_video.py ~/datasets/ucu_seq1 seq1.mp4 results/seq1/KF_run*.txt
+```
+
+DSO vs ORB-SLAM3 on TUM (needs DSO in `/root/dso` and ORB-SLAM3 in `/root/ORB_SLAM3`):
+
+```bash
+python3 scripts/download_tum.py   # 5 TUM sequences to /root/project/Datasets/TUM
+./scripts/run_benchmark.sh        # set SEQ_NAME and DATASET_PATH at the top first
+```
+
+Paths in these scripts are fixed (`/root/project` or `D:\huggingface\...`). Change them for your PC.
 
 ## Repository structure
 
 ```
 .
-├── src/wine_origin/     # the package: config, data, models, evaluate, cli.py (the single entry point)
-├── scripts/              # download_data.py, run_experiment.py
-├── app/                  # streamlit_app.py — the interactive demo (see app/README.md)
-├── notebooks/             # 01-04, executed, narrative-first (see notebooks/README.md)
-├── tests/                 # test_data.py, test_models.py, test_reproducibility.py
-├── config/default.yaml    # every hyperparameter, path, and the seed — nothing hardcoded in src/
-├── data/                  # raw data NOT committed; data/README.md (data card) IS
-├── models/                # trained weights NOT committed; models/README.md (HF Hub instructions) IS
-├── results/               # metrics.json + experiments.md + figures/ — all committed, all small
-├── docs/                  # proposal/, poster/, slides/, CONTRIBUTING.md, and this file's supporting docs
-└── .github/workflows/     # lint.yml — one CI example, easy to extend (see its comments)
+├── setup.sh                     # one time setup: venv, evo, hf
+├── run_sequence.sh              # full cycle for one sequence
+├── scripts/
+│   ├── extract_ucu_mcap.py           # .mcap to TUM format
+│   ├── make_slam_video.py            # video + ATE RMSE
+│   ├── sanity_check.sh               # ORB-SLAM3 test on TUM
+│   ├── run_benchmark.sh              # DSO vs ORB-SLAM3 on one TUM sequence
+│   ├── download_tum.py               # download 5 TUM sequences
+│   ├── DSO_csv_normalize.py          # put real timestamps into DSO output (shell one-liner)
+│   ├── convert_mcap_to_euroc.py      # UCU .mcap to EuRoC format (camera + IMU)
+│   ├── inspect_mcap.py               # list topics in .mcap
+│   ├── inspect_dataset.py            # topics, first frame, first IMU record
+│   ├── extract_all_calib.py          # camera intrinsics and /tf_static from .mcap
+│   └── generate_openvins_config.py   # camera to IMU extrinsics for OpenVINS
+├── config/
+│   ├── UCU_mono.yaml                 # D435 camera settings for ORB-SLAM3
+│   └── camera_tum_fr1.txt            # TUM fr1 camera settings for DSO
+├── results/
+│   ├── seqN/                         # KF_run*.txt, run*.log, rmse_summary.txt, video
+│   ├── tum_fr1_desk/                 # DSO and ORB-SLAM3 trajectories, evo reports, logs
+│   └── figures/ucu_seq1_first_frame.jpg
+└── docs/ucu_slam_toolkit_uk.md       # full guide in Ukrainian
 ```
 
-Everything above (except the placeholders in `docs/proposal|poster|slides/`) is real, executed, working content — clone it and run it, don't take our word for it.
+Other folders come from the template.
 
 ## Reproducibility
 
-- **Seed**: `42`, set once in `config/default.yaml`, applied via `wine_origin.utils.set_seed()` to both `random` and `numpy`.
-- **Versions**: Python 3.13.14; see `requirements.txt` for pinned package versions. Every run's exact versions + OS + git commit are captured by `wine_origin.utils.env_info()` and written into `results/metrics.json`'s `env` field — that's what "reproducible" is checked against, not just claimed.
-- **OS tested on**: macOS (arm64) locally; `.github/workflows/lint.yml` also runs on Ubuntu (`ubuntu-latest`) on every push — add a `test.yml` alongside it the same way if you want CI to run `pytest` too, not just lint.
-- **Runtime**: `make reproduce` takes well under a minute on a laptop — no GPU needed, no dataset download beyond what's bundled in scikit-learn.
-- **Known limitations**: 178 samples total means wide uncertainty on any single metric — see the CV std columns in the results table, and treat any one number with the same caution `results/experiments.md` applies to the random-forest test-set score.
-
-> [!note] Why this matters: a seed alone isn't reproducibility
-> Fixing the seed makes a run *repeatable* on your own machine. It's `env_info()` — capturing exact library versions, OS, and the git commit — that makes it *reproducible* somewhere else, months later, when a library's default behavior has quietly changed underneath an unpinned dependency.
+- **OS**: Ubuntu 24.04 in WSL2 on Windows 11. gcc 13.
+- **ORB-SLAM3**: UZ-SLAMLab master with C++14. Pangolin v0.8.
+- **Camera settings**: from the dataset `calibration.yaml` (Kalibr, pinhole + radtan). 1500 ORB features.
+- **Ground truth**: GNSS without RTK. Only position. Error is a few meters. Height is the worst. So we use xy.
+- **Random**: ORB-SLAM3 is not deterministic. Make 5 runs.
+- **Runtime**: 5 to 15 minutes for one run. The build takes 1 to 2 hours.
 
 ## Development
 
 ```bash
-flake8 src/ scripts/ tests/ app/ && black --check src/ scripts/ tests/ app/ && isort --check src/ scripts/ tests/ app/  # what CI runs
-black src/ scripts/ tests/ app/ && isort src/ scripts/ tests/ app/                                                     # auto-fix formatting
-pytest                                                                                                                  # full suite runs in under a second
+flake8 scripts/ && black --check scripts/ && isort --check scripts/
 ```
 
-Pre-commit hooks (installed by `make setup`) catch most of this before you even open a PR — see `.pre-commit-config.yaml`.
+Common problems:
 
-> [!note] Why this matters: CI enforces it instead of "we agreed to"
-> "The team agreed to run black before committing" survives about one deadline-week skip before someone's code silently stops matching. A red `lint` check in CI is unambiguous, and — importantly — **a red CI check blocks merging**: reviewing a PR you can't tell has passed its own tests is a bad use of a reviewer's time, so don't merge over red CI, fix it first.
+| Problem | Fix |
+|---|---|
+| Build stops with `Killed` | Not enough memory. Add swap in `.wslconfig`. Use `make -j1`. |
+| `Illegal header value b'Bearer '` | Use `hf auth login --token hf_...` |
+| `Too few matched poses` | The run was broken. Run it again. |
+| `KF_run*.txt` is almost empty in the evening | ORB-SLAM3 did not start tracking. This is a result. |
+| The video does not open | Use VLC. |
 
 ## AI usage
 
-| Tool | Used for | How the result was checked |
+| Tool | Used for | How we checked |
 |---|---|---|
-| GitHub Copilot | Autocomplete while writing `src/wine_origin/evaluate.py` | Read line by line; covered by `tests/test_reproducibility.py` and `tests/test_models.py` |
-| ChatGPT | Explaining the difference between macro- and micro-averaged F1 before choosing which to report | Cross-checked against the scikit-learn docs for `f1_score` |
-| Claude | First draft of this README's prose | Rewritten by hand; every number was replaced with the actual value from `results/metrics.json`, not left as generated |
-
-**What we didn't delegate:** the model-selection decision itself (§Results) — specifically, noticing that the single-split ranking disagreed with the cross-validated ranking, and choosing to trust CV — was made by reading the actual numbers, not accepted from a tool's suggestion. Any hyperparameter or architecture choice that ended up in `config/default.yaml` was verified by rerunning `python scripts/run_experiment.py` ourselves, not taken on faith.
+| Claude | Help with ORB-SLAM3 build on Windows 11 (WSL), scripts and this README | We ran the build and scripts. The numbers come from our runs. |
 
 ## Contribution statement
 
 | Member | Contribution | Responsible for |
 |---|---|---|
-| Oleksandr Kosovan | 50% | `src/wine_origin/` (data, models, evaluate), `scripts/run_experiment.py`, notebooks 01–03, tests |
-| Slavko Prytula | 50% | `cli.py`, `app/streamlit_app.py`, CI workflow, `docs/`, notebook 04, this README |
-
-Both members agree with the above distribution.
+| Maxym Hobela | 50% | TODO |
+| TODO Hapiuk | 50% | TODO |
 
 ## License and citation
 
-| | License | Notes |
-|---|---|---|
-| Code (this repo) | MIT — see [`LICENSE`](LICENSE) | Free to reuse, including commercially |
-| Data | See [`data/README.md`](data/README.md) | **Not MIT** — the dataset's own terms apply, independent of this repo's code license |
-| Trained model | Inherits the data's terms + this repo's code license | See [`models/README.md`](models/README.md) |
-| Text / poster / slides | CC BY 4.0 (recommended) | Attribute this repo if reused |
+| | License |
+|---|---|
+| Code | MIT, see [`LICENSE`](LICENSE) |
+| Data | Terms of the UCU SLAM Dataset on Hugging Face |
+| ORB-SLAM3 | GPLv3 (not in this repo) |
 
-> [!important] Why this matters: MIT on the repo does not cover the data
-> The single most common licensing mistake in student projects: assuming an MIT `LICENSE` file at the repo root means *everything* in the repo — including any data you collected or redistributed — is under that license. It doesn't. Code and data are licensed independently; check both.
-
-Citing this project: see [`CITATION.cff`](CITATION.cff) (GitHub renders a "Cite this repository" button from it automatically). Citing the underlying dataset: see [`data/README.md`](data/README.md).
+See [`CITATION.cff`](CITATION.cff).
 
 ## Acknowledgments
 
-Built from [`ucu-ai-course/project-template`](https://github.com/ucu-ai-course/project-template). Thanks to the course instructors and our project mentor for feedback throughout the semester.
+Thanks to UZ-SLAMLab for ORB-SLAM3. Thanks to the UCU autonomous UGV team for the dataset. Thanks to the course team.
