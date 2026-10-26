@@ -117,6 +117,13 @@ hf auth login --token hf_YOUR_TOKEN
 ./run_sequence.sh 1                  # sequence 1, 5 runs, video
 ```
 
+DSO vs ORB-SLAM3 on TUM, locally (same script as in Colab, paths are found automatically):
+
+```bash
+bash scripts/build_dso.sh            # build DSO without GUI into ~/dso (one time)
+bash scripts/run_benchmark.sh        # fr1_desk from ~/datasets, results in results/
+```
+
 Full guide in Ukrainian: [`docs/ucu_slam_toolkit_uk.md`](docs/ucu_slam_toolkit_uk.md).
 
 ## Repository structure
