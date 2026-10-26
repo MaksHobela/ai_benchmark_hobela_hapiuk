@@ -10,10 +10,10 @@ For each sequence and method the benchmark saves a top view plot (`trajectory.pn
 
 ## Team
 
-| Name | GitHub | Role |
+| Name | GitHub |
 |---|---|---|
-| Maxym Hobela | TODO | TODO |
-| TODO Hapiuk | TODO | TODO |
+| Maxym Hobela | https://github.com/MaksHobela/ |
+| TODO Hapiuk | https://github.com/olkaleska/ |
 
 Stakeholders: UCU Autonomous UGV Club (UCU APPS), Oleksandr Kosovan, Yaroslav Prytula.
 
