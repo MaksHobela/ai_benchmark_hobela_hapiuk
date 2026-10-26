@@ -11,7 +11,7 @@ For each sequence and method the benchmark saves a top view plot (`trajectory.pn
 ## Team
 
 | Name | GitHub |
-|---|---|---|
+|---|---|
 | Maxym Hobela | https://github.com/MaksHobela/ |
 | TODO Hapiuk | https://github.com/olkaleska/ |
 
