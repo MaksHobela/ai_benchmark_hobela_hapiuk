@@ -1,185 +1,189 @@
-# UCU SLAM Toolkit
+# SLAM Benchmark on the UCU Campus Dataset
 
-We run ORB-SLAM3 (Monocular) on the UCU SLAM Dataset. We compare the result with GNSS and make a video. Built from [`ucu-ai-course/project-template`](https://github.com/ucu-ai-course/project-template).
+We compare modern SLAM methods on the UCU SLAM Dataset. The robot drives in the campus and in Stryiskyi park. Some routes are in the evening. We want to see how the methods work outside and in low light. Built from [`ucu-ai-course/project-template`](https://github.com/ucu-ai-course/project-template).
 
 ## Demo
 
-The video shows the camera frame on the left. On the right there is a map from the top. The gray line is GNSS. Each color line is one ORB-SLAM3 run.
+For each sequence and method the benchmark saves a top view plot (`trajectory.png`) and a video (`trajectory.mp4`). The black line is GNSS. The red line is the SLAM estimate.
 
-```bash
-./run_sequence.sh 1    # the video is saved to results/seq1/seq1_all_runs.mp4
-```
+![First camera frame of sequence 1](results/figures/ucu_seq1_first_frame.jpg)
 
 ## Team
 
 | Name | GitHub | Role |
 |---|---|---|
-| Maxym Hobela | TODO | ORB-SLAM3 build and runs |
-| TODO Hapiuk | TODO | DSO vs ORB-SLAM3 benchmark on TUM, .mcap tools |
+| Maxym Hobela | TODO | TODO |
+| TODO Hapiuk | TODO | TODO |
+
+Stakeholders: UCU Autonomous UGV Club (UCU APPS), Oleksandr Kosovan, Yaroslav Prytula.
 
 ## Problem and motivation
 
-A robot must know where it is. GNSS does not always work well. A camera is cheap. We want to check how well ORB-SLAM3 works with one camera on a real robot. We test it in the UCU campus and in Stryiskyi park. We test it in the day and in the evening.
+A robot must know where it is. GNSS is not always good. Under trees and in the evening it is even harder. Many SLAM methods exist, but there is no fair test on our own campus data. We want a benchmark that anyone can run again. The style is like Newer College, Hilti and KITTI.
 
 ## Data
 
-UCU SLAM Dataset v1 on Hugging Face: [`ucu-autonomous-ugv/ucu-slam-dataset-v1`](https://huggingface.co/datasets/ucu-autonomous-ugv/ucu-slam-dataset-v1). It has 13 sequences. Each sequence is a ROS 2 `.mcap` file. The camera is Intel RealSense D435 (640x480, 30 fps).
+UCU SLAM Dataset v1 on Hugging Face: [`ucu-autonomous-ugv/ucu-slam-dataset-v1`](https://huggingface.co/datasets/ucu-autonomous-ugv/ucu-slam-dataset-v1).
 
-Access is closed. Accept the terms on the dataset page. Make a **Read** token in Settings. Data is not in this repo.
+- 13 sequences: campus, park and mixed
+- ROS 2 `.mcap` files, 6 to 11 GB each
+- RealSense D435 color camera (640x480, 30 fps), IMU (125 Hz), wheel odometry, GNSS
+- Ground truth is GNSS without RTK. Only position. Error is a few meters.
+- Depth in v1 is broken. We do not use it.
+- Evening sequences: 5, 8 and 13. Pairs with the same route: 4 and 5, 6 and 8, 11 and 13.
 
-| N | Route | Light |
-|---|---|---|
-| 1 | Church loop, campus | day |
-| 2 / 3 | Middle loop, campus (3 is reverse) | day |
-| 4 / 5 | Figure eight, campus | 4 day, **5 evening** |
-| 6 / 7 | Middle loop, park (7 is reverse) | day |
-| 8 | Park loop | **evening** |
-| 9 | Loop with height change, park | day |
-| 10 | Figure eight, park | day |
-| 11 / 12 | Line campus to park and back | day |
-| 13 | Line campus to park | **evening** |
-
-Day and evening pairs on the same route: 4 and 5, 6 and 8, 11 and 13.
+Access is closed. Accept the terms on the dataset page and make a Read token. Data is not in this repo.
 
 ## Approach
 
 ```mermaid
 flowchart LR
-    A["Hugging Face\nsequence-N.mcap"] --> B["extract_ucu_mcap.py\nTUM format"]
-    B --> C["ORB-SLAM3 mono_tum\nN runs"]
-    C --> D["KF_run*.txt"]
-    D --> E["make_slam_video.py\nSim(3) align + RMSE xy"]
-    E --> F["video + rmse_summary.txt"]
+    A["Hugging Face\nsequence-N.mcap"] --> B["extract\nimages, IMU, odom, GNSS"]
+    B --> C["undistort + stride"]
+    C --> D["CPU methods\nORB-SLAM3, DSO, OpenVINS"]
+    C --> E["GPU methods\nDPVO, DROID-SLAM, SP+LG+GTSAM"]
+    C --> M["YOLOv8-Seg / MobileSAM\nmask people and cars"]
+    M --> D
+    M --> E
+    D --> F["Sim(3) and SE(3) align\nATE, loop metric"]
+    E --> F
+    F --> G["tables, plots, videos"]
 ```
 
-1. Download one sequence.
-2. Convert `.mcap` to TUM format (`rgb/`, `rgb.txt`, `imu.txt`, `groundtruth.txt`). No ROS needed.
-3. Run ORB-SLAM3 Monocular 5 times.
-4. Align each run to GNSS with Sim(3) (Umeyama). Count ATE RMSE in the xy plane.
-5. Make one video with all runs.
+Methods:
 
-We use Monocular because depth in v1 is broken.
+- **ORB-SLAM3** (Mono): classic feature based SLAM. The main baseline.
+- **DSO**: direct method. Second classic baseline.
+- **OpenVINS**: visual inertial. Uses the IMU.
+- **DPVO** and **DROID-SLAM**: deep learning methods (GPU).
+- **SuperPoint + LightGlue + GTSAM**: our own pipeline. Learned features, scale from wheel odometry, pose graph with loop closures.
+- **YOLOv8-Seg / MobileSAM + method**: we hide people and cars before SLAM. Does it help?
+- **DSO + OpenVINS**: our simple fusion. DSO gives the shape. OpenVINS gives the scale.
+
+Why these: they cover feature based, direct, visual inertial and deep methods. All have open code.
+
+Metrics:
+
+- ATE RMSE, mean and max after Sim(3) alignment (no scale)
+- ATE RMSE after SE(3) alignment (real scale)
+- Horizontal ATE (xy), because GNSS height is bad
+- Loop quality: when GNSS shows the robot is at the same place again, how far apart is the estimate?
+- Coverage: which part of the route has an estimate
+- Runtime
 
 ## Results
 
-Sequence 1 (day), best run:
+No final results yet. We only have smoke tests from `slam_02_run_benchmark.ipynb`.
 
-| Metric | Value |
-|---|---|
-| ATE RMSE 3D | 1.57 m |
-| ATE RMSE xy | 1.11 m |
-| Loop closed | no (drift about 4 m) |
+Sequence 1: only **SuperPoint + LightGlue + GTSAM** gave a trajectory.
 
-Runs on the same data can be very different (seq 1: 1.1 m and 12.7 m). This is scale drift. So we make many runs and use the median.
+- ATE RMSE 1.43 m (Sim3), 1.50 m (SE3)
+- ATE max 2.86 m
+- Runtime 170 s
 
-Sanity check on TUM fr1_xyz (RGB-D): RMSE about 0.01 m. The build is OK.
+Other methods on sequence 1 have no result yet.
 
-### DSO vs ORB-SLAM3 on TUM fr1_desk
+Sequence 12: no method gave a trajectory.
 
-Both run as Monocular. ATE with Sim(3) alignment (`evo_ape -va --align -s`). Files are in [`results/tum_fr1_desk/`](results/tum_fr1_desk/).
+- ORB-SLAM3: exit code 1
+- DSO: exit code -11 (segmentation fault)
+- OpenVINS: "no static tf between imu and camera_color"
+- DPVO: timeout
+- DROID-SLAM: exit code 1
+- SuperPoint + LightGlue + GTSAM: error
 
-| Method | Poses | ATE RMSE | ATE max | Scale correction |
-|---|---|---|---|---|
-| **ORB-SLAM3** (keyframes) | 142 | **0.020 m** | 0.097 m | 0.978 |
-| DSO | 217 | 0.635 m | 1.234 m | 0.629 |
+We do not know the causes yet. The run on all 13 sequences stopped at sequence 2.
 
-ORB-SLAM3 is about 30 times more accurate here. DSO also has a big scale error.
+[`results/tum_fr1_desk/`](results/tum_fr1_desk/) has a first trial of DSO and ORB-SLAM3 on the TUM dataset.
 
 ## Quick start
 
-All commands run in Ubuntu (WSL on Windows or Linux).
+Main benchmark (Google Colab with GPU, Google Drive):
+
+1. Add a Colab secret `hf` with your Hugging Face token.
+2. Run [`notebooks/slam_01_build_once.ipynb`](notebooks/slam_01_build_once.ipynb) one time (40 to 70 min). It builds all methods and saves them to Drive in `slam_bench/builds/`.
+3. Run [`notebooks/slam_02_run_benchmark.ipynb`](notebooks/slam_02_run_benchmark.ipynb). First try one sequence (`SEQS = [1]`). Then all 13.
+
+Results go to Drive: `slam_bench/results/seq-N/<method>/` (`traj_tum.txt`, `metrics.json`, `status.json`, `run.log`, `trajectory.png`, `trajectory.mp4`). A second run skips what is done.
+
+Local ORB-SLAM3 in WSL (Ubuntu):
 
 ```bash
-sed -i 's/\r$//' *.sh scripts/*.sh   # only if the files came through Windows
+sed -i 's/\r$//' *.sh scripts/*.sh
 chmod +x *.sh scripts/*.sh
-./setup.sh                           # Python venv, evo, Hugging Face client
+./setup.sh
 hf auth login --token hf_YOUR_TOKEN
-./run_sequence.sh 1                  # sequence 1, 5 runs (about 1 hour)
-./run_sequence.sh 5 3                # sequence 5, 3 runs
-STEP=6 FIT=all ./run_sequence.sh 8   # video settings
+./scripts/sanity_check.sh            # ORB-SLAM3 test on TUM fr1_xyz
+./run_sequence.sh 1                  # sequence 1, 5 runs, video
 ```
 
-You need ORB-SLAM3 in `~/ORB_SLAM3`. Build steps for Ubuntu 24.04 are in [`docs/ucu_slam_toolkit_uk.md`](docs/ucu_slam_toolkit_uk.md) (section 3.1). Check the build:
-
-```bash
-./scripts/sanity_check.sh            # fr1_xyz, expect PASS
-```
-
-Only video from ready runs (no ORB-SLAM3):
-
-```bash
-~/venvs/ucu/bin/python scripts/make_slam_video.py ~/datasets/ucu_seq1 seq1.mp4 results/seq1/KF_run*.txt
-```
-
-DSO vs ORB-SLAM3 on TUM (needs DSO in `/root/dso` and ORB-SLAM3 in `/root/ORB_SLAM3`):
-
-```bash
-python3 scripts/download_tum.py   # 5 TUM sequences to /root/project/Datasets/TUM
-./scripts/run_benchmark.sh        # set SEQ_NAME and DATASET_PATH at the top first
-```
-
-Paths in these scripts are fixed (`/root/project` or `D:\huggingface\...`). Change them for your PC.
+Full guide in Ukrainian: [`docs/ucu_slam_toolkit_uk.md`](docs/ucu_slam_toolkit_uk.md).
 
 ## Repository structure
 
 ```
 .
-├── setup.sh                     # one time setup: venv, evo, hf
-├── run_sequence.sh              # full cycle for one sequence
+├── notebooks/
+│   ├── slam_01_build_once.ipynb      # build all SLAM methods in Colab (one time)
+│   └── slam_02_run_benchmark.ipynb   # run the benchmark on all sequences
+├── src/slam_bench/
+│   ├── slam_common.py                # data, metrics, plots, tables
+│   ├── slam_pipelines.py             # one function per method
+│   ├── slam_run.py                   # runs everything in parallel
+│   └── run_droid.py                  # DROID-SLAM without GUI
+├── setup.sh, run_sequence.sh         # local ORB-SLAM3 in WSL
 ├── scripts/
 │   ├── extract_ucu_mcap.py           # .mcap to TUM format
-│   ├── make_slam_video.py            # video + ATE RMSE
+│   ├── make_slam_video.py            # video + ATE
 │   ├── sanity_check.sh               # ORB-SLAM3 test on TUM
-│   ├── run_benchmark.sh              # DSO vs ORB-SLAM3 on one TUM sequence
-│   ├── download_tum.py               # download 5 TUM sequences
-│   ├── DSO_csv_normalize.py          # put real timestamps into DSO output (shell one-liner)
-│   ├── convert_mcap_to_euroc.py      # UCU .mcap to EuRoC format (camera + IMU)
-│   ├── inspect_mcap.py               # list topics in .mcap
+│   ├── run_benchmark.sh              # DSO vs ORB-SLAM3 on TUM
+│   ├── download_tum.py               # download TUM sequences
+│   ├── DSO_csv_normalize.py          # real timestamps for DSO output (shell one-liner)
+│   ├── convert_mcap_to_euroc.py      # .mcap to EuRoC format
+│   ├── inspect_mcap.py               # list topics
 │   ├── inspect_dataset.py            # topics, first frame, first IMU record
-│   ├── extract_all_calib.py          # camera intrinsics and /tf_static from .mcap
-│   └── generate_openvins_config.py   # camera to IMU extrinsics for OpenVINS
+│   ├── extract_all_calib.py          # camera and /tf_static from .mcap
+│   └── generate_openvins_config.py   # camera to IMU transform for OpenVINS
 ├── config/
-│   ├── UCU_mono.yaml                 # D435 camera settings for ORB-SLAM3
-│   └── camera_tum_fr1.txt            # TUM fr1 camera settings for DSO
+│   ├── UCU_mono.yaml                 # D435 settings for local ORB-SLAM3
+│   └── camera_tum_fr1.txt            # TUM camera for DSO
 ├── results/
-│   ├── seqN/                         # KF_run*.txt, run*.log, rmse_summary.txt, video
-│   ├── tum_fr1_desk/                 # DSO and ORB-SLAM3 trajectories, evo reports, logs
-│   └── figures/ucu_seq1_first_frame.jpg
-└── docs/ucu_slam_toolkit_uk.md       # full guide in Ukrainian
+│   ├── tum_fr1_desk/                 # first TUM trial
+│   └── figures/
+└── docs/ucu_slam_toolkit_uk.md       # local guide in Ukrainian
 ```
 
-Other folders come from the template.
+Built binaries (about 470 MB) are not in git. They live on Google Drive. Other folders come from the template.
 
 ## Reproducibility
 
-- **OS**: Ubuntu 24.04 in WSL2 on Windows 11. gcc 13.
-- **ORB-SLAM3**: UZ-SLAMLab master with C++14. Pangolin v0.8.
-- **Camera settings**: from the dataset `calibration.yaml` (Kalibr, pinhole + radtan). 1500 ORB features.
-- **Ground truth**: GNSS without RTK. Only position. Error is a few meters. Height is the worst. So we use xy.
-- **Random**: ORB-SLAM3 is not deterministic. Make 5 runs.
-- **Runtime**: 5 to 15 minutes for one run. The build takes 1 to 2 hours.
+- **Platform**: Google Colab, GPU T4 / L4 / A100, Python 3.13.
+- **Builds**: ORB-SLAM3 without `-march=native`, DSO without GUI, OpenVINS v2.7 without ROS, DPVO and DROID-SLAM as wheels.
+- **Inputs**: undistorted images. Every 2nd frame for most methods, every 6th for DROID-SLAM and GTSAM.
+- **Settings**: all in `CFG` in `src/slam_bench/slam_pipelines.py`.
+- **Ground truth**: GNSS is never used inside the methods. Only for evaluation.
+- **Limits**: Colab time is limited. Each method has a time budget per sequence.
 
 ## Development
 
 ```bash
-flake8 scripts/ && black --check scripts/ && isort --check scripts/
+flake8 src/ scripts/ && black --check src/ scripts/ && isort --check src/ scripts/
 ```
 
-Common problems:
+Things to check (not confirmed):
 
-| Problem | Fix |
+| Problem | Note |
 |---|---|
-| Build stops with `Killed` | Not enough memory. Add swap in `.wslconfig`. Use `make -j1`. |
-| `Illegal header value b'Bearer '` | Use `hf auth login --token hf_...` |
-| `Too few matched poses` | The run was broken. Run it again. |
-| `KF_run*.txt` is almost empty in the evening | ORB-SLAM3 did not start tracking. This is a result. |
-| The video does not open | Use VLC. |
+| OpenVINS: no static tf | The code looks for `imu` and `camera_color`. `generate_openvins_config.py` uses `base_link` and `color`. Maybe the names do not match. |
+| IMU noise | `CFG['imu_noise']` has generic values. Real values are in the dataset `calibration.yaml`. |
+| DPVO / DROID weights | Our copies of `dpvo.pth` and `droid.pth` are 14 and 29 bytes with "404: Not Found" inside. Maybe the weights did not download. |
+| VI-DSO | No official public code. Marked NOT_AVAILABLE. |
 
 ## AI usage
 
 | Tool | Used for | How we checked |
 |---|---|---|
-| Claude | Help with ORB-SLAM3 build on Windows 11 (WSL), scripts and this README | We ran the build and scripts. The numbers come from our runs. |
+| Claude | Help with builds in Colab and WSL, pipeline code and this README | Numbers in this README are copied from notebook output. Nothing else. |
 
 ## Contribution statement
 
@@ -194,10 +198,10 @@ Common problems:
 |---|---|
 | Code | MIT, see [`LICENSE`](LICENSE) |
 | Data | Terms of the UCU SLAM Dataset on Hugging Face |
-| ORB-SLAM3 | GPLv3 (not in this repo) |
+| SLAM methods | Their own licenses (ORB-SLAM3 and DSO are GPLv3). Not in this repo. |
 
 See [`CITATION.cff`](CITATION.cff).
 
 ## Acknowledgments
 
-Thanks to UZ-SLAMLab for ORB-SLAM3. Thanks to the UCU autonomous UGV team for the dataset. Thanks to the course team.
+Thanks to the UCU Autonomous UGV Club for the dataset. Thanks to Oleksandr Kosovan and Yaroslav Prytula. Thanks to the authors of all SLAM methods.
